@@ -4,11 +4,75 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"slices"
+	"strings"
+	"sync"
+	"time"
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/joho/godotenv"
 	"github.com/mmcdole/gofeed"
 )
+
+type FeedStore struct {
+	mu       sync.RWMutex
+	feedURLs map[string][]string
+	timeout  time.Duration
+}
+
+var feedStore = FeedStore{
+	feedURLs: make(map[string][]string),
+	timeout:  30 * time.Minute,
+}
+
+func (fs *FeedStore) AddFeed(channelID, feedURL string) {
+	fs.mu.Lock()
+	defer fs.mu.Unlock()
+	feeds := fs.feedURLs[channelID]
+	feeds = append(feeds, feedURL)
+	fs.feedURLs[channelID] = feeds
+}
+
+func (fs *FeedStore) RemoveFeed(channelID, feedURL string) {
+	fs.mu.Lock()
+	defer fs.mu.Unlock()
+	feeds := fs.feedURLs[channelID]
+	newFeeds := []string{}
+	for _, stored := range feeds {
+		if stored != feedURL {
+			newFeeds = append(newFeeds, stored)
+		}
+	}
+	fs.feedURLs[channelID] = newFeeds
+}
+
+func (fs *FeedStore) ListFeed(channelID string) string {
+	fs.mu.RLock()
+	defer fs.mu.RUnlock()
+	feeds := fs.feedURLs[channelID]
+	if len(feeds) == 0 {
+		return "No RSS feeds subscribed."
+	}
+	return "Subscribed feeds:\n" + strings.Join(feeds, "\n")
+}
+
+func (fs *FeedStore) UpdateTimeout(timeoutStr string) error {
+	fs.mu.Lock()
+	defer fs.mu.Unlock()
+	d, err := time.ParseDuration(timeoutStr)
+	if err != nil {
+		return err
+	}
+	fs.timeout = d
+	return nil
+}
+
+func (fs *FeedStore) FeedExists(channelID, feedURL string) bool {
+	fs.mu.RLock()
+	defer fs.mu.RUnlock()
+	feedURLs := feedStore.feedURLs[channelID]
+	return slices.Contains(feedURLs, feedURL)
+}
 
 func fetchRSS(channelID string) (*gofeed.Item, error) {
 	feedParser := gofeed.NewParser()
