@@ -12,6 +12,7 @@ import (
 	"github.com/bwmarrin/discordgo"
 	"github.com/joho/godotenv"
 	"github.com/mmcdole/gofeed"
+	"github.com/robfig/cron/v3"
 )
 
 type FeedStore struct {
@@ -97,6 +98,33 @@ func postToDiscord(session *discordgo.Session, channelID, message string) {
 	}
 }
 
+func schedulePeriodicUpdates(session *discordgo.Session) {
+	c := cron.New()
+	_, err := c.AddFunc(fmt.Sprintf("@every %s", feedStore.timeout.String()), func() {
+		feedStore.mu.RLock()
+		channels := make([]string, 0, len(feedStore.feedURLs))
+		for channelID := range feedStore.feedURLs {
+			channels = append(channels, channelID)
+		}
+		feedStore.mu.RUnlock()
+
+		for _, channelID := range channels {
+			feedItem, err := fetchRSS(channelID)
+			if err != nil {
+				log.Println("error fetching RSS feed for", channelID, ":", err)
+				continue
+			}
+			if feedItem != nil {
+				message := fmt.Sprintf("🆕 New blog post: **%s**\n%s", feedItem.Title, feedItem.Link)
+				postToDiscord(session, channelID, message)
+			}
+		}
+	})
+	if err != nil {
+		log.Fatalf("error: Failed to schedule RSS job: %v", err)
+	}
+	c.Start()
+}
 
 func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 	if m.Author.Bot {
@@ -185,5 +213,6 @@ func main() {
 	if err != nil {
 		log.Fatal("error: Starting bot: ", err)
 	}
+	schedulePeriodicUpdates(session)
 	select {}
 }
