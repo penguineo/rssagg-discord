@@ -97,6 +97,71 @@ func postToDiscord(session *discordgo.Session, channelID, message string) {
 	}
 }
 
+
+func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
+	if m.Author.Bot {
+		return
+	}
+	if m.GuildID != "" {
+		if !strings.HasPrefix(m.Content, "/rss") {
+			return
+		}
+	}
+	if !strings.HasPrefix(m.Content, "/rss") {
+		return
+	}
+	args := strings.Fields(m.Content)
+	if len(args) < 2 {
+		s.ChannelMessageSend(
+			m.ChannelID,
+			"Usage: /rss <add|remove|list|update_timeout> [url|duration]",
+		)
+		return
+	}
+	command := args[1]
+	switch command {
+	case "add":
+		if len(args) < 3 {
+			s.ChannelMessageSend(m.ChannelID, "Please provide a feed URL to add")
+			return
+		}
+		if feedStore.FeedExists(m.ChannelID, args[2]) {
+			s.ChannelMessageSend(m.ChannelID, "URL already exists.")
+			return
+		}
+		feedStore.AddFeed(m.ChannelID, args[2])
+		s.ChannelMessageSend(m.ChannelID, "Feed added.")
+
+	case "remove":
+		if len(args) < 3 {
+			s.ChannelMessageSend(m.ChannelID, "Please provide a feed URL to remove")
+			return
+		}
+		if feedStore.FeedExists(m.ChannelID, args[2]) {
+			s.ChannelMessageSend(m.ChannelID, "URL already exists.")
+			return
+		}
+		feedStore.RemoveFeed(m.ChannelID, args[2])
+		s.ChannelMessageSend(m.ChannelID, "Feed removed.")
+
+	case "list":
+		response := feedStore.ListFeed(m.ChannelID)
+		s.ChannelMessageSend(m.ChannelID, response)
+
+	case "update_timeout":
+		if len(args) < 3 {
+			s.ChannelMessageSend(m.ChannelID, "Usage: /rss update_timeout <10m|1h|etc>")
+			return
+		}
+		err := feedStore.UpdateTimeout(args[2])
+		if err != nil {
+			s.ChannelMessageSend(m.ChannelID, "Invalid timeout format: "+err.Error())
+			return
+		}
+		s.ChannelMessageSend(m.ChannelID, "Timeout updated to "+args[2])
+	}
+}
+
 func runBot() (*discordgo.Session, error) {
 	BotToken := os.Getenv("BOTAPI")
 	session, err := discordgo.New("Bot " + BotToken)
