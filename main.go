@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"os"
 	"slices"
 	"strings"
@@ -13,6 +12,7 @@ import (
 	"github.com/joho/godotenv"
 	"github.com/mmcdole/gofeed"
 	"github.com/robfig/cron/v3"
+	"github.com/rs/zerolog/log"
 )
 
 type FeedStore struct {
